@@ -5,7 +5,10 @@ import (
 	"demo/worker"
 	"flag"
 	"fmt"
+	"sync"
 	"time"
+
+	"github.com/gotomicro/ego/core/elog"
 )
 
 var (
@@ -39,10 +42,20 @@ func main() {
 		panic(err)
 	}
 	defer cleanup()
-	domainList, err := work.GetLastHalfYearUserDomainList(context.Background(), uids, now)
-	if err != nil {
-		panic(err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(200)
+	for i := 0; i < 200; i++ {
+		go func(i int) {
+			defer wg.Done()
+			domainList, err := work.GetLastHalfYearUserDomainList(ctx, uids, now)
+			if err != nil {
+				elog.Error("GetLastHalfYearUserDomainList", elog.Any("协程号i", i), elog.FieldErr(err))
+				return
+			}
+			fmt.Printf("协程%d执行完,res=%v", i, domainList)
+		}(i)
 	}
-
-	fmt.Println(domainList)
+	wg.Wait()
 }
