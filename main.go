@@ -59,14 +59,20 @@ type LoggerHook struct {
 	logger *log.Logger
 }
 
-func GetCaller(depth int) string {
+func GetCaller(depth int, trace bool) string {
 	callers := ""
 	for i := 0; true; i++ {
 		_, file, line, ok := runtime.Caller(i)
 		if !ok {
 			break
 		}
-		callers = callers + fmt.Sprintf("%v:%v\n", file, line)
+
+		if trace {
+			callers = callers + fmt.Sprintf("%v:%v\n", file, line)
+		} else {
+			callers = fmt.Sprintf("%v:%v\n", file, line)
+		}
+
 		if i == depth {
 			break
 		}
@@ -80,7 +86,7 @@ func (l *LoggerHook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (contex
 }
 
 func (l *LoggerHook) AfterProcess(ctx context.Context, cmd redis.Cmder) error {
-	l.logger.Printf("%s cmd: %v\n", GetCaller(2), cmd)
+	l.logger.Printf("%s cmd: %v\n", GetCaller(5, false), cmd)
 	return nil
 }
 
@@ -89,7 +95,7 @@ func (l *LoggerHook) BeforeProcessPipeline(ctx context.Context, cmds []redis.Cmd
 }
 
 func (l *LoggerHook) AfterProcessPipeline(ctx context.Context, cmds []redis.Cmder) error {
-	l.logger.Printf("%s cmds: %v\n", GetCaller(2), cmds)
+	l.logger.Printf("%s cmds: %v\n", GetCaller(5, false), cmds)
 	return nil
 }
 
@@ -153,8 +159,8 @@ func newWorkerOpts() *Options {
 func NewServer() *Server {
 	// 初始化pool
 	pool := make(chan int, 200)
-	for i := 0; i < 200; i++ {
-		pool <- i
+	for i := 0; i < 10; i++ {
+		pool <- i + 1
 	}
 	opts := newWorkerOpts()
 	return &Server{
@@ -173,7 +179,7 @@ func main() {
 			<-server.pool
 		}
 	}()
-	log.Println("服务启动中...")
+	fmt.Println("服务启动中...")
 	server.Start(quit)
 }
 
@@ -183,7 +189,7 @@ func (s *Server) Start(quit chan os.Signal) {
 	for {
 		select {
 		case s := <-quit:
-			log.Println("退出信号", s)
+			fmt.Println("退出信号", s)
 			return
 		case id := <-s.pool:
 			s.Poll(ctx, id)
@@ -247,7 +253,7 @@ func (w *Worker) Do(ctx context.Context, id int, key string) {
 
 	res := <-result
 	if res.Err != nil {
-		log.Println("worker", id, "error")
+		log.Println("worker", id, "error=", res.Err)
 		return
 	}
 
